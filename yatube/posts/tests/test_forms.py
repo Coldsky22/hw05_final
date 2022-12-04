@@ -7,6 +7,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.conf import settings
 from http import HTTPStatus
+from django.core.cache import cache
 from posts.models import Comment, Group, Post, User
 UNO = 1
 User = get_user_model()
@@ -38,6 +39,7 @@ class PostsURLTests(TestCase):
         self.guest = Client()
         self.authorized_author = Client()
         self.authorized_author.force_login(self.author)
+        cache.clear()
 
     def test_posts_forms_create_post(self):
         """Проверка, создает ли форма пост в базе."""

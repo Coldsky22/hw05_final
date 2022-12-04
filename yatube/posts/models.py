@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-
+from django.db.models import UniqueConstraint
+SYMB_QUANT = 15
 User = get_user_model()
 
 
@@ -43,7 +44,7 @@ class Post(models.Model):
     )
 
     def __str__(self):
-        return self.text[:15]
+        return self.text[:SYMB_QUANT]
 
     class Meta:
         ordering = ['-pub_date']
@@ -77,7 +78,7 @@ class Comment(models.Model):
         verbose_name_plural = 'Комменты'
 
     def __str__(self):
-        return self.text[:15]
+        return self.text[:SYMB_QUANT]
 
 
 class Follow(models.Model):
@@ -91,3 +92,6 @@ class Follow(models.Model):
         on_delete=models.CASCADE,
         related_name='following',
         verbose_name='Тот на кого подписываемся')
+
+    class Meta:
+        UniqueConstraint(fields=['user', 'author'], name='unique_follow')

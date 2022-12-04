@@ -1,9 +1,18 @@
-from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
-from django.urls import reverse
+import shutil
+import tempfile
+from http import HTTPStatus
+
 from django import forms
-from ..models import Post, Group, Follow
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.shortcuts import get_object_or_404
+from django.test import Client, TestCase, override_settings
+from django.urls import reverse
+from posts.models import Comment, Follow, Group, Post
+from posts.utils import POST_PER_PAGE
+
 FULL_PAGE: int = 10
 DOS: int = 2
 TRES: int = 3
@@ -11,28 +20,44 @@ CINK: int = 5
 
 
 User = get_user_model()
+TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
 
-
+@override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsURLTests(TestCase):
-
     @classmethod
     def setUpClass(cls):
+        cache.clear()
         super().setUpClass()
+        cls.small_gif = (
+            b'\x47\x49\x46\x38\x39\x61\x02\x00'
+            b'\x01\x00\x80\x00\x00\x00\x00\x00'
+            b'\xFF\xFF\xFF\x21\xF9\x04\x00\x00'
+            b'\x00\x00\x00\x2C\x00\x00\x00\x00'
+            b'\x02\x00\x01\x00\x00\x02\x02\x0C'
+            b'\x0A\x00\x3B'
+        )
+        cls.uploaded = SimpleUploadedFile(
+            name='small.gif',
+            content=cls.small_gif,
+            content_type='image/gif'
+        )
         cls.group = Group.objects.create(title='Тестовая группа',
                                          slug='test_group',
                                          description='первая группа')
         cls.author = User.objects.create(username='test_user')
-        cls.post = Post.objects.create(text='Тестовый пост', author=cls.author)
+        cls.post = Post.objects.create(
+            text='Тестовый пост', author=cls.author, group=cls.group,
+            image=cls.uploaded)
         cls.pk = PostsURLTests.post.pk
         cls.authorized_author = Client()
         cls.authorized_author.force_login(cls.author)
         cls.templates_pages_names = {
             reverse('posts:index'): 'posts/index.html',
             reverse('posts:group_list', kwargs={'slug':
-                    PostsURLTests.group.slug}):
+                                                PostsURLTests.group.slug}):
             'posts/group_list.html',
             reverse('posts:profile', kwargs={'username':
-                    PostsURLTests.author}):
+                                             PostsURLTests.author}):
             'posts/profile.html',
             reverse('posts:post_detail', kwargs={'post_id': PostsURLTests.pk}):
             'posts/post_detail.html',
@@ -41,7 +66,21 @@ class PostsURLTests(TestCase):
             reverse('posts:post_create'): 'posts/create_post.html',
         }
 
-    # Проверяем используемые шаблоны
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
+        super().tearDownClass()
+
+    def tearDown(self) -> None:
+        cache.clear()
+
+    def posts_check_all_fields(self, post):
+        """Метод, проверяющий поля поста."""
+        with self.subTest(post=post):
+            self.assertEqual(post.text, self.post.text)
+            self.assertEqual(post.author, self.post.author)
+            self.assertEqual(post.group.pk, self.post.group.pk)
+
     def test_pages_uses_correct_template(self):
         cache.clear()
         for reverse_name, template in self.templates_pages_names.items():
@@ -49,18 +88,13 @@ class PostsURLTests(TestCase):
                 response = self.authorized_author.get(reverse_name)
                 self.assertTemplateUsed(response, template)
 
-    def test_index_page_have_correct_context(self):
-        cache.clear()
+    def test_index_page_correct_context(self):
         response = self.authorized_author.get(reverse('posts:index'))
-        self.assertIn('page_obj', response.context)
-        self.assertIn('title', response.context)
-
-    def test_group_page_have_correct_context(self):
-        response = self.authorized_author.get(
-            reverse('posts:group_list', kwargs={'slug': 'test_group'}))
-        self.assertIn('page_obj', response.context)
-        self.assertIn('title', response.context)
-        self.assertIn('text', response.context)
+        first_object = response.context['page_obj'][0]
+        post_text_0 = first_object.text
+        post_image_0 = first_object.image
+        self.assertEqual(post_text_0, 'Тестовый пост')
+        self.assertEqual(post_image_0, 'posts/small.gif')
 
     def test_profile_page_have_correct_context(self):
         response = self.authorized_author.get(
@@ -84,6 +118,7 @@ class PostsURLTests(TestCase):
         form_fields = {
             'text': forms.fields.CharField,
             'group': forms.fields.ChoiceField,
+            'image': forms.fields.ImageField,
         }
         for value, expected in form_fields.items():
             with self.subTest(value=value):
@@ -104,6 +139,39 @@ class PostsURLTests(TestCase):
                 form_field = response.context.get('form').fields.get(value)
                 self.assertIsInstance(form_field, expected)
 
+    def test_add_comment_correct_context(self):
+        """Проверка add_comment
+        комментарий появляется на странице поста
+        комментировать посты может только
+        авторизованный пользователь.
+        """
+
+        tasks_count = Post.objects.count()
+        form_data = {
+            'post': self.post,
+            'author': self.post.author,
+            'text': 'Тестовый текст комментария',
+            'image': self.uploaded,
+        }
+
+        response = self.authorized_author.post(
+            reverse('posts:add_comment', args=[self.post.pk]),
+            data=form_data
+        )
+        self.uploaded.close
+
+        self.assertEqual(Post.objects.count(), tasks_count)
+        self.assertRedirects(
+            response,
+            reverse('posts:post_detail', args=[self.post.pk])
+        )
+        last_comment = get_object_or_404(Comment, post=self.post)
+
+        self.assertEqual(last_comment.post, self.post)
+        self.assertEqual(last_comment.author, self.post.author)
+        self.assertEqual(last_comment.text, 'Тестовый текст комментария')
+        cache.clear()
+
 
 class PaginatorViewsTest(TestCase):
     # Здесь создаются фикстуры: клиент и 13 тестовых записей.
@@ -118,16 +186,25 @@ class PaginatorViewsTest(TestCase):
                                                 description='Вторая группа')
         cls.author = User.objects.create(username='test_user')
         cls.second_author = User.objects.create(username='test_user2')
+        cls.posts = []
         for i in range(13):
-            Post.objects.create(text='Тестовый пост',
-                                author=cls.author,
-                                group=cls.group)
+            cls.posts.append(Post(
+                text=f'Тестовый пост, тестовый пост, тестовый пост {i}',
+                author=cls.author,
+                group=cls.group
+            )
+            )
+        Post.objects.bulk_create(cls.posts)
         cls.authorized_author = Client()
         cls.authorized_author.force_login(cls.author)
         for i in range(2):
-            Post.objects.create(text='Тестовый пост',
-                                author=cls.second_author,
-                                group=cls.second_group)
+            cls.posts.append(Post(
+                text=f'Тестовый пост, тестовый пост, тестовый пост {i}',
+                author=cls.second_author,
+                group=cls.second_group
+            )
+            )
+        Post.objects.bulk_create(cls.posts)
         cls.authorized_author2 = Client()
         cls.authorized_author2.force_login(cls.second_author)
         cache.clear()
