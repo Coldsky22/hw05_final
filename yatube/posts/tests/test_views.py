@@ -1,6 +1,5 @@
 import shutil
 import tempfile
-from http import HTTPStatus
 
 from django import forms
 from django.conf import settings
@@ -11,7 +10,6 @@ from django.shortcuts import get_object_or_404
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from posts.models import Comment, Follow, Group, Post
-from posts.utils import POST_PER_PAGE
 
 FULL_PAGE: int = 10
 DOS: int = 2
@@ -21,6 +19,7 @@ CINK: int = 5
 
 User = get_user_model()
 TEMP_MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
+
 
 @override_settings(MEDIA_ROOT=TEMP_MEDIA_ROOT)
 class PostsURLTests(TestCase):
