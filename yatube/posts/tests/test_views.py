@@ -11,6 +11,8 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from posts.models import Comment, Follow, Group, Post
 
+SEC_NUMBER_OF_TEST_POSTS: int = 2
+NUMBER_OF_TEST_POSTS: int = 13
 FULL_PAGE: int = 10
 DOS: int = 2
 TRES: int = 3
@@ -185,25 +187,18 @@ class PaginatorViewsTest(TestCase):
                                                 description='Вторая группа')
         cls.author = User.objects.create(username='test_user')
         cls.second_author = User.objects.create(username='test_user2')
-        cls.posts = []
-        for i in range(13):
-            cls.posts.append(Post(
-                text=f'Тестовый пост, тестовый пост, тестовый пост {i}',
-                author=cls.author,
-                group=cls.group
-            )
-            )
-        Post.objects.bulk_create(cls.posts)
+        Post.objects.bulk_create([
+            Post(text=f"some text {i}", author=cls.author, group=cls.group)
+            for i in range(NUMBER_OF_TEST_POSTS)
+        ])
         cls.authorized_author = Client()
         cls.authorized_author.force_login(cls.author)
-        for i in range(2):
-            cls.posts.append(Post(
-                text=f'Тестовый пост, тестовый пост, тестовый пост {i}',
-                author=cls.second_author,
-                group=cls.second_group
-            )
-            )
-        Post.objects.bulk_create(cls.posts)
+        Post.objects.bulk_create([Post(
+            text=f'Тестовый пост, тестовый пост, тестовый пост {i}',
+            author=cls.second_author,
+            group=cls.second_group)
+            for i in range(SEC_NUMBER_OF_TEST_POSTS)
+        ])
         cls.authorized_author2 = Client()
         cls.authorized_author2.force_login(cls.second_author)
         cache.clear()
