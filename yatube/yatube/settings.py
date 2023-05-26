@@ -23,7 +23,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = '^#i6e)iivlec5e1mhim!+h(7vifd+^ng^#&0cj8p5o5$5ebgr8'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 CSRF_FAILURE_VIEW = 'core.views.csrf_failure'
 
 
@@ -32,6 +32,8 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
     '[::1]',
     'testserver',
+    'localhost',
+    
 ]
 
 LOGIN_URL = 'users:login'
@@ -143,5 +145,5 @@ USE_TZ = True
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-STATIC_URL = '/static/'
-STATICFILES_DIRS = (os.path.join(BASE_DIR, 'static'),)
+STATIC_URL = '/static/'  # префикс для url
+STATIC_ROOT = os.path.join(BASE_DIR, 'static/')  # папка, в которой будет лежать статика
