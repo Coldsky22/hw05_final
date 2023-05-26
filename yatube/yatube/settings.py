@@ -33,7 +33,7 @@ ALLOWED_HOSTS = [
     '[::1]',
     'testserver',
     'localhost',
-    
+    '158.160.2.48',
 ]
 
 LOGIN_URL = 'users:login'
